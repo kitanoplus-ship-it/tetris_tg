@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>ТЕТРИС</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap');
+
+  :root {
+    --bg: #0a0a0f;
+    --panel: #0f0f1a;
+    --border: #1a1a2e;
+    --accent: #00f5ff;
+    --accent2: #ff006e;
+    --accent3: #ffbe0b;
+    --text: #e0e0ff;
+    --dim: #4040aa;
+    --grid: rgba(255,255,255,0.03);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; touch-action: none; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    overflow: hidden;
+    position: relative;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: 
+      repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(0,245,255,0.03) 40px),
+      repeating-linear-gradient(90deg, transparent, transparent 39px, rgba(0,245,255,0.03) 40px);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .scanlines {
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.15) 2px,
+      rgba(0,0,0,0.15) 4px
+    );
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  .game-wrapper {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    position: relative;
+    z-index: 1;
+    padding: 10px;
+  }
+
+  .game-title {
+    font-family: 'VT323', monospace;
+    font-size: 28px;
+    letter-spacing: 8px;
+    color: var(--accent);
+    text-align: center;
+    text-shadow: 0 0 20px var(--accent), 0 0 40px rgba(0,245,255,0.3);
+    margin-bottom: 8px;
+    position: relative;
+    z-index: 1;
+    animation: flicker 4s infinite;
+  }
+
+  @keyframes flicker {
+    0%, 95%, 100% { opacity: 1; }
+    96% { opacity: 0.8; }
+    97% { opacity: 1; }
+    98% { opacity: 0.6; }
+    99% { opacity: 1; }
+  }
+
+  .board-container {
+    position: relative;
+  }
+
+  #gameCanvas {
+    display: block;
+    border: 1px solid var(--accent);
+    box-shadow: 
+      0 0 15px rgba(0,245,255,0.4),
+      0 0 40px rgba(0,245,255,0.1),
+      inset 0 0 30px rgba(0,0,0,0.5);
+    background: #000008;
+  }
+
+  .side-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 90px;
+  }
+
+  .panel-box {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 10px 8px;
+    position: relative;
+    box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+  }
+
+  .panel-box::before {
+    content: '';
+    position: absolute;
+    top: -1px; left: -1px; right: -1px;
+    height: 2px;
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+  }
+
+  .panel-label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--dim);
+    margin-bottom: 5px;
+    text-transform: uppercase;
+  }
+
+  .panel-value {
+    font-family: 'VT323', monospace;
+    font-size: 26px;
+    color: var(--accent);
+    text-shadow: 0 0 10px var(--accent);
+    line-height: 1;
+  }
+
+  #nextCanvas {
+    display: block;
+    background: #000008;
+    margin: 0 auto;
+  }
+
+  .controls {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    width: 100%;
+    max-width: 260px;
+    margin-top: 8px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .btn {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'VT323', monospace;
+    font-size: 22px;
+    padding: 12px 8px;
+    cursor: pointer;
+    transition: all 0.1s;
+    text-align: center;
+    user-select: none;
+    -webkit-user-select: none;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--accent);
+    opacity: 0;
+    transition: opacity 0.1s;
+  }
+
+  .btn:active::after { opacity: 0.15; }
+  .btn:active { transform: scale(0.95); border-color: var(--accent); }
+
+  .btn-wide { grid-column: span 3; font-size: 16px; letter-spacing: 3px; }
+  .btn-center { grid-column: 2; }
+
+  .overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,10,0.9);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    backdrop-filter: blur(4px);
+  }
+
+  .overlay-title {
+    font-family: 'VT323', monospace;
+    font-size: 48px;
+    color: var(--accent2);
+    text-shadow: 0 0 20px var(--accent2);
+    letter-spacing: 4px;
+    margin-bottom: 16px;
+    animation: pulse 1s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+  }
+
+  .overlay-score {
+    font-family: 'VT323', monospace;
+    font-size: 28px;
+    color: var(--accent3);
+    margin-bottom: 24px;
+  }
+
+  .overlay-btn {
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: 'VT323', monospace;
+    font-size: 24px;
+    letter-spacing: 4px;
+    padding: 10px 30px;
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(0,245,255,0.3);
+    transition: all 0.2s;
+  }
+
+  .overlay-btn:hover, .overlay-btn:active {
+    background: var(--accent);
+    color: var(--bg);
+    box-shadow: 0 0 30px var(--accent);
+  }
+
+  .level-up {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: 'VT323', monospace;
+    font-size: 36px;
+    color: var(--accent3);
+    text-shadow: 0 0 20px var(--accent3);
+    pointer-events: none;
+    animation: levelUp 1.5s ease-out forwards;
+    z-index: 60;
+    white-space: nowrap;
+  }
+
+  @keyframes levelUp {
+    0% { opacity: 1; transform: translate(-50%, -50%) scale(0.5); }
+    30% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+    70% { opacity: 1; transform: translate(-50%, -80%); }
+    100% { opacity: 0; transform: translate(-50%, -120%); }
+  }
+</style>
+</head>
+<body>
+<div class="scanlines"></div>
+
+<div class="game-title">TETRIS</div>
+
+<div class="game-wrapper">
+  <div class="side-panel">
+    <div class="panel-box">
+      <div class="panel-label">СЛЕДУЮЩИЙ</div>
+      <canvas id="nextCanvas" width="80" height="80"></canvas>
+    </div>
+    <div class="panel-box">
+      <div class="panel-label">СЧЁТ</div>
+      <div class="panel-value" id="score">0</div>
+    </div>
+    <div class="panel-box">
+      <div class="panel-label">ЛИНИИ</div>
+      <div class="panel-value" id="lines">0</div>
+    </div>
+    <div class="panel-box">
+      <div class="panel-label">УРОВЕНЬ</div>
+      <div class="panel-value" id="level">1</div>
+    </div>
+  </div>
+
+  <div class="board-container">
+    <canvas id="gameCanvas"></canvas>
+    <div class="overlay" id="startOverlay">
+      <div class="overlay-title">TETRIS</div>
+      <div class="overlay-score" style="color:var(--dim); font-size:16px; letter-spacing:2px; margin-bottom:30px;">НАЖМИ ЧТОБЫ НАЧАТЬ</div>
+      <button class="overlay-btn" onclick="startGame()">СТАРТ</button>
+    </div>
+    <div class="overlay" id="gameOverOverlay" style="display:none;">
+      <div class="overlay-title">GAME OVER</div>
+      <div class="overlay-score" id="finalScore"></div>
+      <button class="overlay-btn" onclick="startGame()">ЕЩЁ РАЗ</button>
+    </div>
+  </div>
+</div>
+
+<div class="controls">
+  <button class="btn" ontouchstart="btnAction('left')" onmousedown="btnAction('left')">◀</button>
+  <button class="btn" ontouchstart="btnAction('rotate')" onmousedown="btnAction('rotate')">↺</button>
+  <button class="btn" ontouchstart="btnAction('right')" onmousedown="btnAction('right')">▶</button>
+  <button class="btn btn-wide" ontouchstart="btnAction('down')" onmousedown="btnAction('down')">▼ ВНИЗ</button>
+  <button class="btn btn-wide" ontouchstart="btnAction('drop')" onmousedown="btnAction('drop')">⬇ СБРОС</button>
+</div>
+
+<script>
+// Telegram WebApp init
+if (window.Telegram && window.Telegram.WebApp) {
+  Telegram.WebApp.ready();
+  Telegram.WebApp.expand();
+}
+
+const COLS = 10, ROWS = 20;
+let CELL;
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const nextCanvas = document.getElementById('nextCanvas');
+const nextCtx = nextCanvas.getContext('2d');
+
+function setSize() {
+  const maxH = window.innerHeight - 220;
+  const maxW = window.innerWidth - 120;
+  CELL = Math.floor(Math.min(maxH / ROWS, maxW / COLS));
+  CELL = Math.max(20, Math.min(32, CELL));
+  canvas.width = COLS * CELL;
+  canvas.height = ROWS * CELL;
+}
+setSize();
+
+const PIECES = [
+  { shape: [[1,1,1,1]], color: '#00f5ff' },          // I
+  { shape: [[1,1],[1,1]], color: '#ffbe0b' },         // O
+  { shape: [[0,1,0],[1,1,1]], color: '#8b5cf6' },     // T
+  { shape: [[1,0],[1,0],[1,1]], color: '#ff8500' },   // L
+  { shape: [[0,1],[0,1],[1,1]], color: '#0066ff' },   // J
+  { shape: [[0,1,1],[1,1,0]], color: '#00e676' },     // S
+  { shape: [[1,1,0],[0,1,1]], color: '#ff006e' },     // Z
+];
+
+let board, current, currentX, currentY, nextPiece, score, lines, level, gameLoop, gameRunning, lockDelay, lockTimer;
+
+function createBoard() {
+  return Array.from({length: ROWS}, () => Array(COLS).fill(null));
+}
+
+function randomPiece() {
+  const p = PIECES[Math.floor(Math.random() * PIECES.length)];
+  return { shape: p.shape.map(r => [...r]), color: p.color };
+}
+
+function rotate(shape) {
+  const rows = shape.length, cols = shape[0].length;
+  return Array.from({length: cols}, (_, i) => Array.from({length: rows}, (_, j) => shape[rows - 1 - j][i]));
+}
+
+function isValid(shape, x, y) {
+  return shape.every((row, dy) =>
+    row.every((v, dx) => {
+      if (!v) return true;
+      const nx = x + dx, ny = y + dy;
+      return nx >= 0 && nx < COLS && ny < ROWS && (ny < 0 || !board[ny][nx]);
+    })
+  );
+}
+
+function place() {
+  current.shape.forEach((row, dy) =>
+    row.forEach((v, dx) => {
+      if (v) board[currentY + dy][currentX + dx] = current.color;
+    })
+  );
+  clearLines();
+  current = nextPiece;
+  nextPiece = randomPiece();
+  currentX = Math.floor((COLS - current.shape[0].length) / 2);
+  currentY = 0;
+  if (!isValid(current.shape, currentX, currentY)) {
+    gameOver();
+  }
+  drawNext();
+}
+
+function clearLines() {
+  let cleared = 0;
+  for (let y = ROWS - 1; y >= 0; y--) {
+    if (board[y].every(c => c)) {
+      board.splice(y, 1);
+      board.unshift(Array(COLS).fill(null));
+      cleared++;
+      y++;
+    }
+  }
+  if (cleared) {
+    const pts = [0, 100, 300, 500, 800][cleared] * level;
+    score += pts;
+    lines += cleared;
+    const newLevel = Math.floor(lines / 10) + 1;
+    if (newLevel > level) {
+      level = newLevel;
+      showLevelUp();
+      clearInterval(gameLoop);
+      gameLoop = setInterval(tick, Math.max(100, 800 - (level - 1) * 70));
+    }
+    document.getElementById('score').textContent = score;
+    document.getElementById('lines').textContent = lines;
+    document.getElementById('level').textContent = level;
+  }
+}
+
+function showLevelUp() {
+  const el = document.createElement('div');
+  el.className = 'level-up';
+  el.textContent = `УРОВЕНЬ ${level}!`;
+  document.querySelector('.board-container').appendChild(el);
+  setTimeout(() => el.remove(), 1500);
+}
+
+function tick() {
+  if (isValid(current.shape, currentX, currentY + 1)) {
+    currentY++;
+  } else {
+    place();
+  }
+  draw();
+}
+
+function ghostY() {
+  let gy = currentY;
+  while (isValid(current.shape, currentX, gy + 1)) gy++;
+  return gy;
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  // Grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x <= COLS; x++) {
+    ctx.beginPath(); ctx.moveTo(x * CELL, 0); ctx.lineTo(x * CELL, canvas.height); ctx.stroke();
+  }
+  for (let y = 0; y <= ROWS; y++) {
+    ctx.beginPath(); ctx.moveTo(0, y * CELL); ctx.lineTo(canvas.width, y * CELL); ctx.stroke();
+  }
+
+  // Board
+  board.forEach((row, y) => row.forEach((color, x) => {
+    if (color) drawCell(ctx, x, y, color, 1);
+  }));
+
+  // Ghost
+  const gy = ghostY();
+  if (gy !== currentY) {
+    current.shape.forEach((row, dy) => row.forEach((v, dx) => {
+      if (v) drawCell(ctx, currentX + dx, gy + dy, current.color, 0.2);
+    }));
+  }
+
+  // Current
+  current.shape.forEach((row, dy) => row.forEach((v, dx) => {
+    if (v) drawCell(ctx, currentX + dx, currentY + dy, current.color, 1);
+  }));
+}
+
+function drawCell(c, x, y, color, alpha) {
+  const s = CELL - 1;
+  c.globalAlpha = alpha;
+  c.fillStyle = color;
+  c.fillRect(x * CELL + 0.5, y * CELL + 0.5, s, s);
+  // Highlight
+  c.fillStyle = 'rgba(255,255,255,0.25)';
+  c.fillRect(x * CELL + 0.5, y * CELL + 0.5, s, 3);
+  c.fillRect(x * CELL + 0.5, y * CELL + 0.5, 3, s);
+  // Shadow
+  c.fillStyle = 'rgba(0,0,0,0.3)';
+  c.fillRect(x * CELL + s - 2, y * CELL + 0.5, 2, s);
+  c.fillRect(x * CELL + 0.5, y * CELL + s - 2, s, 2);
+  // Glow
+  if (alpha === 1) {
+    c.fillStyle = color;
+    c.globalAlpha = 0.15;
+    c.fillRect(x * CELL - 1, y * CELL - 1, CELL + 2, CELL + 2);
+  }
+  c.globalAlpha = 1;
+}
+
+function drawNext() {
+  nextCtx.clearRect(0, 0, 80, 80);
+  const s = nextPiece.shape;
+  const cs = Math.min(16, Math.floor(60 / Math.max(s.length, s[0].length)));
+  const ox = Math.floor((80 - s[0].length * cs) / 2);
+  const oy = Math.floor((80 - s.length * cs) / 2);
+  s.forEach((row, y) => row.forEach((v, x) => {
+    if (v) {
+      nextCtx.fillStyle = nextPiece.color;
+      nextCtx.fillRect(ox + x * cs, oy + y * cs, cs - 1, cs - 1);
+      nextCtx.fillStyle = 'rgba(255,255,255,0.2)';
+      nextCtx.fillRect(ox + x * cs, oy + y * cs, cs - 1, 2);
+    }
+  }));
+}
+
+function startGame() {
+  board = createBoard();
+  score = 0; lines = 0; level = 1;
+  document.getElementById('score').textContent = '0';
+  document.getElementById('lines').textContent = '0';
+  document.getElementById('level').textContent = '1';
+  document.getElementById('startOverlay').style.display = 'none';
+  document.getElementById('gameOverOverlay').style.display = 'none';
+  nextPiece = randomPiece();
+  current = randomPiece();
+  currentX = Math.floor((COLS - current.shape[0].length) / 2);
+  currentY = 0;
+  drawNext();
+  gameRunning = true;
+  clearInterval(gameLoop);
+  gameLoop = setInterval(tick, 800);
+  draw();
+}
+
+function gameOver() {
+  clearInterval(gameLoop);
+  gameRunning = false;
+  document.getElementById('finalScore').textContent = `СЧЁТ: ${score}  ЛИНИИ: ${lines}`;
+  document.getElementById('gameOverOverlay').style.display = 'flex';
+  if (window.Telegram && window.Telegram.WebApp) {
+    Telegram.WebApp.sendData(JSON.stringify({ score, lines, level }));
+  }
+}
+
+function btnAction(action) {
+  if (!gameRunning) return;
+  if (action === 'left' && isValid(current.shape, currentX - 1, currentY)) { currentX--; draw(); }
+  else if (action === 'right' && isValid(current.shape, currentX + 1, currentY)) { currentX++; draw(); }
+  else if (action === 'rotate') {
+    const r = rotate(current.shape);
+    if (isValid(r, currentX, currentY)) { current.shape = r; draw(); }
+    else if (isValid(r, currentX - 1, currentY)) { current.shape = r; currentX--; draw(); }
+    else if (isValid(r, currentX + 1, currentY)) { current.shape = r; currentX++; draw(); }
+  }
+  else if (action === 'down') {
+    if (isValid(current.shape, currentX, currentY + 1)) { currentY++; } else { place(); }
+    draw();
+  }
+  else if (action === 'drop') {
+    currentY = ghostY();
+    place();
+    draw();
+  }
+}
+
+// Keyboard
+document.addEventListener('keydown', e => {
+  const map = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'rotate', ArrowDown: 'down', ' ': 'drop' };
+  if (map[e.key]) { e.preventDefault(); btnAction(map[e.key]); }
+});
+
+// Swipe
+let touchStartX, touchStartY, touchStartTime;
+canvas.addEventListener('touchstart', e => {
+  touchStartX = e.touches[0].clientX;
+  touchStartY = e.touches[0].clientY;
+  touchStartTime = Date.now();
+}, { passive: true });
+
+canvas.addEventListener('touchend', e => {
+  if (!gameRunning) return;
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  const dy = e.changedTouches[0].clientY - touchStartY;
+  const dt = Date.now() - touchStartTime;
+  const adx = Math.abs(dx), ady = Math.abs(dy);
+  if (adx < 10 && ady < 10 && dt < 200) { btnAction('rotate'); return; }
+  if (adx > ady) {
+    if (adx > 20) btnAction(dx > 0 ? 'right' : 'left');
+  } else {
+    if (ady > 20) btnAction(dy > 0 ? (dt < 200 ? 'drop' : 'down') : 'rotate');
+  }
+}, { passive: true });
+
+window.addEventListener('resize', () => { setSize(); if (gameRunning) draw(); });
+</script>
+</body>
+</html>
